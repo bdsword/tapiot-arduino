@@ -2,25 +2,17 @@
 #include <MFRC522.h>
 #include "ESP8266.h"
 #include <SoftwareSerial.h>
+#include "config.h"
 
 /*********** Taps configuration ***********/
-/* constants */
-#define TAP_ID 1
-
 /* variables */
-int recordID;
+int recordID = -1; // recordID = -1 : Tap is now off
 /******************************************/
 
 
 /************** ESP8266 related **************/
-/* constants */
-#define SSID        "BDSword-Wireless"
-#define PASSWORD    "rgtfthyg159"
-#define HOST_NAME   "localhost"
-#define HOST_PORT   3000
-
 /* variables */
-SoftwareSerial espSerial(10, 11);
+SoftwareSerial espSerial(7, 8);
 ESP8266 wifi(espSerial);
 /*********************************************/
 
@@ -68,13 +60,13 @@ void setup()
   /* RFID setup */
   SPI.begin();
   mfrc522.PCD_Init();
+  for (byte i = 0; i < 6; i++) {
+    key.keyByte[i] = 0xFF;
+  }
 	
   /* Relay setup */
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
-  for (byte i = 0; i < 6; i++) {
-    key.keyByte[i] = 0xFF;
-  }
   
   /* Sensor setup */
   pinMode(SENSOR_PIN, INPUT);
@@ -83,25 +75,35 @@ void setup()
   attachInterrupt(SENSOR_INTERRUPT, increasePulseCounter, FALLING);
 
   /* ESP8266 setup */
-  if (wifi.setOprToStation()) {
-    Serial.print("to station ok\r\n");
-  } else {
-    Serial.print("to station err\r\n");
-  }
+  Serial.print("Try to chage ESP8266 to station...");
+  do {
+    wifi.restart();
+    Serial.print('.');
+  } while(!wifi.setOprToStation());
+  Serial.print("\r\nTo station ok\r\n");
 
-  if (wifi.joinAP(SSID, PASSWORD)) {
-    Serial.print("Join AP success\r\n");
-    Serial.print("IP: ");
-    Serial.println(wifi.getLocalIP().c_str());
-  } else {
-    Serial.print("Join AP failure\r\n");
-  }
+
+  Serial.print("Try to join AP...");
+  do {
+    Serial.print('.');
+  } while(!wifi.joinAP(SSID, PASSWORD));
+  Serial.print("\r\nJoin AP success\r\n");
+  Serial.print("IP: ");
+  Serial.println(wifi.getLocalIP().c_str());
+
 
   if (wifi.disableMUX()) {
     Serial.print("single ok\r\n");
   } else {
     Serial.print("single err\r\n");
   }
+
+  Serial.print("Try to connected to socket server...");
+  while (!connectSocketServer()) {
+    Serial.print('.');
+    delay(1000);
+  }
+  Serial.print("\r\nconnect to socket server ok!\r\n");
 }
 
 void loop() 
@@ -114,70 +116,77 @@ void loop()
     return;
   }
   readBlock(STORAGE_BLOCK_NUM, userRFID);
-  Serial.print("read block: ");
-  for (int j=0 ; j<16 ; j++){
-    Serial.write (userRFID[j]);
+  Serial.print("RFID attached\r\n");
+  if (recordID == -1) {
+    if (sendTurnOnRequest((const char*)userRFID)){
+      switchRelay();
+    }
+  } else {
+    if (sendTurnOffRequest((const char*)userRFID)) {
+      switchRelay();
+    }
   }
-
-  switchRelay();
+  delay(2000);
 }
 
-void sendTurnOnRequest()
+bool connectSocketServer()
 {
-  uint8_t buffer[300] = {0};
-  if (wifi.createTCP(HOST_NAME, HOST_PORT)) {
-    Serial.print("create tcp ok\r\n");
-  } else {
-    Serial.print("create tcp err\r\n");
-  }
+  uint8_t buf[10];
+  Serial.print("Try to create tcp connection...");
+  do {
+    Serial.print('.');
+  } while(!wifi.createTCP(HOST_NAME, HOST_PORT));
+  Serial.print("\r\n");
 
-  char req[100];
-  sprintf(req, "POST /taps/%d/on HTTP/1.1\nHost: localhost:3000\nContent-Type: multipart/form-data; boundary=----GG\n\n----GG\nContent-Disposition: form-data; name=\"rfid\"\n\n122345678\n----GG\n\n", TAP_ID);
-  wifi.send((const uint8_t*)req, strlen(req));
+  String init_req = String(TAP_ID) + '\n';
+  wifi.send((const uint8_t*)init_req.c_str(), init_req.length());
 
-  uint32_t len = wifi.recv(buffer, sizeof(buffer), 10000);
-  if (len > 0) {
-    Serial.print("Received:[");
-    for(uint32_t i = 0; i < len; i++) {
-      Serial.print((char)buffer[i]);
-    }
-    Serial.print("]\r\n");
+  wifi.recv(buf, sizeof(buf), 10000);
+  // Serial.print("Debug: " + String((const char *)buf) + ", len: " + strlen((const char *)buf));
+  if (strcmp((char *)buf, "OK\n") == 0) {
+    wifi.send((const uint8_t*)"OK\n", strlen("OK\n"));
+    return true;
   }
-
-  if (wifi.releaseTCP()) {
-    Serial.print("release tcp ok\r\n");
-  } else {
-    Serial.print("release tcp err\r\n");
-  }
+  return false;
 }
 
-void sendTurnOffRequest()
+bool sendTurnOnRequest(const char *rfid)
 {
-  uint8_t buffer[300] = {0};
-  if (wifi.createTCP(HOST_NAME, HOST_PORT)) {
-    Serial.print("create tcp ok\r\n");
-  } else {
-    Serial.print("create tcp err\r\n");
-  }
+  uint8_t buf[10] = {0};
 
-  char req[100];
-  sprintf(req, "POST /taps/%d/on HTTP/1.1\nHost: localhost:3000\nContent-Type: multipart/form-data; boundary=----GG\n\n----GG\nContent-Disposition: form-data; name=\"rfid\"\n\n122345678\n----GG\nContent-Disposition: form-data; name=\"used\"\n\n%d\n----GG\n\n", TAP_ID, pulseCounter);
-  wifi.send((const uint8_t*)req, strlen(req));
-
-  uint32_t len = wifi.recv(buffer, sizeof(buffer), 10000);
-  if (len > 0) {
-    Serial.print("Received:[");
-    for(uint32_t i = 0; i < len; i++) {
-      Serial.print((char)buffer[i]);
-    }
-    Serial.print("]\r\n");
+  String req = String("1 ") + rfid + "\n";
+  wifi.send((const uint8_t*)req.c_str(), req.length());
+  wifi.recv(buf, sizeof(buf), 10000);
+  if (buf[0] == '1') {
+    String recordIdString = String((const char*)buf).substring(2, strlen((const char*)buf));
+    Serial.print("Turn on tap success!");
+    // Serial.print("Debug: " + recordIdString + ", len: " + recordIdString.length());
+    recordID = atoi(recordIdString.c_str());
+    // Serial.print("Debug2: " + recordID);
+    return true;
+  } else if (buf[0] == '0') {
+    Serial.print("Turn on tap failed!");
+    return false;
   }
+  return false;
+}
 
-  if (wifi.releaseTCP()) {
-    Serial.print("release tcp ok\r\n");
-  } else {
-    Serial.print("release tcp err\r\n");
+bool sendTurnOffRequest(const char *rfid)
+{
+  uint8_t buf[10] = {0};
+
+  String req = String("0 ") + rfid + " " + recordID + " " + pulseCounter + "\n";
+  wifi.send((const uint8_t*)req.c_str(), req.length());
+  wifi.recv(buf, sizeof(buf), 10000);
+  if (buf[0] == '1') {
+    Serial.print("Turn off tap success!");
+    recordID = -1;
+    return true;
+  } else if (buf[0] == '0') {
+    Serial.print("Turn off tap failed!");
+    return false;
   }
+  return false;
 }
 
 void setRelayState(bool relayState) 
