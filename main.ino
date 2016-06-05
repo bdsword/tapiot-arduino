@@ -108,6 +108,8 @@ void setup()
 
 void loop() 
 {
+  detectWebActiveAction();
+
   mfrc522.PCD_Init();
   if (!mfrc522.PICC_IsNewCardPresent()) {
     return;
@@ -126,7 +128,6 @@ void loop()
       switchRelay();
     }
   }
-  delay(2000);
 }
 
 bool connectSocketServer()
@@ -187,6 +188,29 @@ bool sendTurnOffRequest(const char *rfid)
     return false;
   }
   return false;
+}
+
+void detectWebActiveAction()
+{
+  uint8_t buf[10] = {0};
+  uint32_t len = wifi.recv(buf, sizeof(buf), 2000);
+  Serial.print("Detecting...\r\n");
+  if (len > 0) {
+    Serial.print("Detected: " + String(buf[0]) + ", Record ID: " + recordID);
+    if (buf[0] == '0' && recordID != -1) {
+      switchRelay();
+      itoa(pulseCounter, (char *)buf, 10);
+      String retPulseReq = "2 " + String((const char *)buf) + "\n";
+      Serial.print("Try to send pulse req: " + retPulseReq + ", len: " + retPulseReq.length() + "\r\n");
+      wifi.send((const uint8_t*)retPulseReq.c_str(), retPulseReq.length());
+      recordID = -1;
+    } else if (buf[0] == '1' && recordID == -1) {
+      String recordIdString = String((const char*)buf).substring(2, strlen((const char*)buf));
+      recordID = atoi(recordIdString.c_str());
+      Serial.print("Now record id : " + recordID);
+      switchRelay();
+    }
+  }
 }
 
 void setRelayState(bool relayState) 
