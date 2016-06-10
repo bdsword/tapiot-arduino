@@ -19,7 +19,7 @@ ESP8266 wifi(espSerial);
 
 /*************** relay related ***************/
 /* constants */
-#define RELAY_PIN 13
+#define RELAY_PIN 6
 
 /* variables */
 bool relayNowState = 0;
@@ -29,7 +29,7 @@ bool relayNowState = 0;
 /************ flow sensor related ************/
 /* constants */
 #define SENSOR_INTERRUPT 0
-#define SENSOR_PIN 2
+#define SENSOR_PIN 5
 
 /* variables */
 volatile int pulseCounter; 
