@@ -29,7 +29,7 @@ bool relayNowState = 0;
 /************ flow sensor related ************/
 /* constants */
 #define SENSOR_INTERRUPT 0
-#define SENSOR_PIN 5
+#define SENSOR_PIN 2
 
 /* variables */
 volatile int pulseCounter; 
