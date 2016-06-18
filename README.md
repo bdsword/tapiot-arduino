@@ -1,4 +1,8 @@
 # TAPIoT Devices
+TAPIoT is a project that can bring wisdom to your taps.
+
+[Tapiot-arduino](https://github.com/bdsword/tapiot-arduino) is a sub-project under TAPIoT, which is the hardware part of TAPIoT. Therefore, tapiot-arduino should be uploaded to your Arduino.
+
 
 ## Requirements
 1. 12V DC power supply * 3
